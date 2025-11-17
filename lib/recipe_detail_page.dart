@@ -1,0 +1,325 @@
+import 'package:flutter/material.dart';
+import 'database_helper.dart';
+
+// -------------------------------------------------
+// 1. 모델 클래스 정의 (DB 데이터를 Dart 객체로 변환)
+// -------------------------------------------------
+class RecipeDetail {
+  final int id;
+  final String name;
+  final String? description;
+  final String? imagePath;
+  final int? cookingTime;
+
+  RecipeDetail({
+    required this.id,
+    required this.name,
+    this.description,
+    this.imagePath,
+    this.cookingTime,
+  });
+
+  factory RecipeDetail.fromMap(Map<String, dynamic> map) {
+    return RecipeDetail(
+      id: map['recipe_id'],
+      name: map['recipe_name'],
+      description: map['description'],
+      imagePath: map['image_path'],
+      cookingTime: map['cooking_time_minutes'],
+    );
+  }
+}
+
+class RequiredIngredient {
+  final int id;
+  final String name;
+  final bool isOwned;
+  final String? quantity;
+
+  RequiredIngredient({
+    required this.id,
+    required this.name,
+    required this.isOwned,
+    this.quantity,
+  });
+
+  factory RequiredIngredient.fromMap(Map<String, dynamic> map) {
+    return RequiredIngredient(
+      id: map['ingredient_id'],
+      name: map['name'],
+      isOwned: map['is_owned'] == 1, // 0/1을 bool로
+      quantity: map['quantity'],
+    );
+  }
+}
+
+class RecipeStep {
+  final int stepNumber;
+  final String description;
+
+  RecipeStep({required this.stepNumber, required this.description});
+
+  factory RecipeStep.fromMap(Map<String, dynamic> map) {
+    return RecipeStep(
+      stepNumber: map['step_number'],
+      description: map['step_description'],
+    );
+  }
+}
+// -------------------------------------------------
+
+class RecipeDetailPage extends StatefulWidget {
+  final int recipeId; // 목록 페이지에서 전달받은 ID
+
+  const RecipeDetailPage({super.key, required this.recipeId});
+
+  @override
+  State<RecipeDetailPage> createState() => _RecipeDetailPageState();
+}
+
+class _RecipeDetailPageState extends State<RecipeDetailPage> {
+  final DatabaseHelper _dbHelper = DatabaseHelper.instance;
+
+  // 3종류의 데이터를 담을 상태 변수
+  RecipeDetail? _recipeDetail;
+  List<RequiredIngredient> _ingredients = [];
+  List<RecipeStep> _steps = [];
+  bool _isLoading = true;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadRecipeData();
+  }
+
+  // 함수를 호출하여 3종류의 데이터를 모두 로드
+  Future<void> _loadRecipeData() async {
+    try {
+      final data = await _dbHelper.getRecipeDetails(widget.recipeId);
+
+      if (mounted) {
+        setState(() {
+          _recipeDetail = RecipeDetail.fromMap(data['details']);
+          
+          _ingredients = (data['ingredients'] as List)
+              .map((map) => RequiredIngredient.fromMap(map))
+              .toList();
+              
+          _steps = (data['steps'] as List)
+              .map((map) => RecipeStep.fromMap(map))
+              .toList();
+              
+          _isLoading = false;
+        });
+      }
+    } catch (e) {
+      print("레시피 상세 로딩 오류: $e");
+      if (mounted) {
+        setState(() { _isLoading = false; });
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text("레시피를 불러오는 데 실패했습니다: $e")),
+        );
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(
+        // 로딩이 끝나면 레시피 이름을 제목으로
+        title: Text(_recipeDetail?.name ?? '로딩 중...'),
+      ),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : _buildRecipeContent(), // 스크롤 가능한 본문
+    );
+  }
+
+  // 스크롤 가능한 본문 위젯
+  Widget _buildRecipeContent() {
+    if (_recipeDetail == null) {
+      return const Center(child: Text('레시피 데이터를 불러오지 못했습니다.'));
+    }
+    
+    // SingleChildScrollView + Column = 스크롤 가능한 페이지
+    return SingleChildScrollView(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          // 1. (선택) 이미지 섹션
+          // if (_recipeDetail!.imagePath != null)
+          //   Image.network(
+          //     _recipeDetail!.imagePath!,
+          //     height: 250,
+          //     width: double.infinity,
+          //     fit: BoxFit.cover,
+          //   ),
+          
+          // 2. 기본 정보 섹션
+          _buildInfoSection(),
+          
+          const Divider(height: 32),
+
+          // 3. 필요한 재료 섹션
+          _buildIngredientsSection(),
+          
+          const Divider(height: 32),
+
+          // 4. 요리 순서 섹션
+          _buildStepsSection(),
+          
+          const SizedBox(height: 40), // 하단 여백
+        ],
+      ),
+    );
+  }
+
+  // 2. 기본 정보 (제목, 설명, 요리 시간 등)
+  Widget _buildInfoSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            _recipeDetail!.name,
+            style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold),
+          ),
+          if (_recipeDetail!.cookingTime != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 8.0),
+              child: Row(
+                children: [
+                  const Icon(Icons.timer_outlined, size: 18, color: Colors.grey),
+                  const SizedBox(width: 4),
+                  Text(
+                    '${_recipeDetail!.cookingTime}분',
+                    style: const TextStyle(fontSize: 16, color: Colors.grey),
+                  ),
+                ],
+              ),
+            ),
+          if (_recipeDetail!.description != null)
+            Padding(
+              padding: const EdgeInsets.only(top: 16.0),
+              child: Text(
+                _recipeDetail!.description!,
+                style: const TextStyle(fontSize: 16, height: 1.5),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // 3. 필요한 재료 (보유 여부 체크)
+  Widget _buildIngredientsSection() {
+    final List<RequiredIngredient> missingIngredients = 
+        _ingredients.where((ing) => !ing.isOwned).toList();
+
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '필요한 재료',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          // ListView.builder 대신 Column 사용 (스크롤 중첩 방지)
+          Column(
+            children: _ingredients.map((ing) {
+              return ListTile(
+                // 보유 여부에 따라 아이콘 변경
+                leading: Icon(
+                  ing.isOwned ? Icons.check_circle : Icons.radio_button_unchecked,
+                  color: ing.isOwned ? Colors.green : Colors.grey,
+                ),
+                title: Text(
+                  ing.name,
+                  style: TextStyle(
+                    decoration: ing.isOwned 
+                        ? TextDecoration.lineThrough // 보유 시 취소선
+                        : TextDecoration.none,
+                    color: ing.isOwned ? Colors.grey[600] : Colors.black,
+                  ),
+                ),
+                trailing: Text(ing.quantity ?? ''), // 수량
+              );
+            }).toList(),
+          ),
+          
+          // 📌 (핵심 기능) 부족한 재료가 있을 경우, 장바구니 버튼 표시
+          if (missingIngredients.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 16.0),
+              child: Center(
+                child: FilledButton.icon(
+                  icon: const Icon(Icons.add_shopping_cart),
+                  label: Text('부족한 재료 ${missingIngredients.length}개 장바구니 추가'),
+                  onPressed: () async {
+                    try {
+                      // 1단계에서 만든 DB 헬퍼 함수 호출
+                      await _dbHelper.addItemsToShoppingList(missingIngredients);
+                      
+                      // 성공 알림
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                            content: Text('부족한 재료를 장바구니에 담았습니다! (중복 제외)'),
+                            backgroundColor: Colors.green,
+                          ),
+                        );
+                      }
+                    } catch (e) {
+                      // 실패 알림
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(
+                            content: Text('장바구니 추가 중 오류: $e'),
+                            backgroundColor: Colors.red,
+                          ),
+                        );
+                      }
+                    }
+                  },
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  // 4. 요리 순서
+  Widget _buildStepsSection() {
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 16.0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '요리 순서',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+          // 스크롤 중첩 방지
+          Column(
+            children: _steps.map((step) {
+              return ListTile(
+                leading: CircleAvatar(
+                  child: Text('${step.stepNumber}'),
+                  backgroundColor: Colors.blue.shade100,
+                  foregroundColor: Colors.black,
+                ),
+                title: Text(step.description),
+              );
+            }).toList(),
+          ),
+        ],
+      ),
+    );
+  }
+}

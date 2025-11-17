@@ -1,6 +1,6 @@
 // lib/main.dart
 import 'package:flutter/material.dart';
-import 'home_screen.dart'; // 3번에서 만들 파일
+import 'main_tabs_page.dart';
 
 void main() {
   // DB 헬퍼가 준비되었는지 확인하기 위해 runApp 전에 바인딩 초기화
@@ -21,7 +21,7 @@ class MyApp extends StatelessWidget {
       ),
       debugShowCheckedModeBanner: false,
       // 3번에서 만들 HomeScreen을 앱의 메인 화면으로 지정
-      home: const HomeScreen(), 
+      home: const MainTabsPage(), 
     );
   }
 }
