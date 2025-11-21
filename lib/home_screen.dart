@@ -44,11 +44,22 @@ class _HomeScreenState extends State<HomeScreen> {
   @override
   void initState() {
     super.initState();
-    _loadData();
+    _initPage();
+  }
+
+  Future<void> _initPage() async {
+    // 1. 먼저 DB의 모든 체크박스 상태를 0(false)으로 초기화
+    await _dbHelper.resetAllIngredientStatus();
+
+    // 2. 초기화가 끝난 후 데이터를 불러와 화면에 그리기
+    // (이때 불러오면 모두 false 상태로 불러와집니다)
+    if (mounted) {
+      await _loadData();
+    }
   }
 
   // -----------------------------------------------------------------
-  // 📌 2. 데이터 로딩 로직 수정 (더 간단해짐)
+  // 📌 2. 데이터 로딩 로직 수정 
   // -----------------------------------------------------------------
   Future<void> _loadData() async {
     // 1. 'ingredients' 테이블에서 모든 재료 목록 가져오기 (is_owned 포함)
