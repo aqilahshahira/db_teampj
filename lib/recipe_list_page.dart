@@ -2,22 +2,32 @@
 
 import 'package:flutter/material.dart';
 import 'database_helper.dart'; 
-import 'missing_ingredients_page.dart';
 import 'recipe_detail_page.dart';
-import 'missing_ingredients_sorted_page.dart';
 
 // 1. DB 쿼리 결과를 담을 Recipe 모델
 // (쿼리 결과 컬럼명이 'recipe_id', 'recipe_name'이라고 가정)
 class Recipe {
   final int id;
   final String name;
+  final int missingCount;
+  final int? cookingTime;
+  final String? difficulty;
 
-  Recipe({required this.id, required this.name});
+  Recipe({
+    required this.id,
+    required this.name,
+    required this.missingCount,
+    this.cookingTime,
+    this.difficulty,
+  });
 
   factory Recipe.fromMap(Map<String, dynamic> map) {
     return Recipe(
-      id: map['recipe_id'], // 1번 파일의 쿼리 결과 컬럼명
-      name: map['recipe_name'], // 1번 파일의 쿼리 결과 컬럼명
+      id: map['recipe_id'],
+      name: map['recipe_name'],
+      missingCount: map['missing_count'],
+      cookingTime: map['cooking_time_minutes'],
+      difficulty: map['difficulty'],
     );
   }
 }
@@ -26,10 +36,13 @@ class RecipeListPage extends StatefulWidget {
   final List<int>? tagIds;
   final bool? isTagDisabled;
 
+  final List<String>? tagNames;
+
   const RecipeListPage({
     super.key, 
     this.tagIds, 
-    this.isTagDisabled
+    this.isTagDisabled,
+    this.tagNames,
   });
 
   @override
@@ -48,12 +61,12 @@ class _RecipeListPageState extends State<RecipeListPage> {
     _loadRecipes();
   }
 
-  // 1번 파일의 getAvailableRecipes() 함수를 호출
+  // 1번 파일의 getIntegratedRecipes() 함수를 호출
   Future<void> _loadRecipes() async {
     try {
       // 1번 파일에서 사용자가 쿼리를 작성할 함수 호출
       // 📌 DB 헬퍼 함수 호출 시 필터 정보 전달
-      final recipeData = await _dbHelper.getAvailableRecipes(
+      final recipeData = await _dbHelper.getIntegratedRecipeList(
         tagIds: widget.tagIds,
         isTagDisabled: widget.isTagDisabled,
       );
@@ -83,6 +96,19 @@ class _RecipeListPageState extends State<RecipeListPage> {
     await _loadRecipes();
   }
 
+  int _starCount(String difficulty) {
+  switch (difficulty) {
+    case "쉬움":
+      return 1;
+    case "보통":
+      return 2;
+    case "어려움":
+      return 3;
+    default:
+      return 0;
+  }
+}
+
   @override
     Widget build(BuildContext context) {
       return Scaffold(
@@ -94,76 +120,72 @@ class _RecipeListPageState extends State<RecipeListPage> {
             )
           ),
           backgroundColor: Color.fromARGB(207, 255, 136, 62),
-          // -------------------------------------------------------
-          // 📌 (신규) 우측 상단 아이콘 버튼 2개 추가
-          // -------------------------------------------------------
-          actions: [
-            IconButton(
-              tooltip: '부족한 재료 1개',
-              icon: const Icon(Icons.filter_1), // 숫자 '1' 아이콘
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    // 3번에서 만들 페이지로 '1'을 전달
-                    builder: (context) =>  MissingIngredientsPage(
-                      missingCount: 1,
-                      tagIds: widget.tagIds,
-                      isTagDisabled: widget.isTagDisabled,
-                    ),
-                  ),
-                );
-              },
-            ),
-            IconButton(
-              tooltip: '부족한 재료 2개',
-              icon: const Icon(Icons.filter_2), // 숫자 '2' 아이콘
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    // 3번에서 만들 페이지로 '2'를 전달
-                    builder: (context) =>  MissingIngredientsPage(
-                      missingCount: 2,
-                      tagIds: widget.tagIds,
-                      isTagDisabled: widget.isTagDisabled,
-                    ),
-                  ),
-                );
-              },
-            ),
-            IconButton(
-            tooltip: '부족한 재료 3개 이상',
-            icon: const Icon(Icons.filter_3), // '3+' 아이콘
-            onPressed: () {
-              Navigator.push(
-                context,
-                MaterialPageRoute(
-                  // 3번에서 만들 새 페이지로 이동
-                  builder: (context) =>  MissingIngredientsSortedPage(
-                    tagIds: widget.tagIds,
-                    isTagDisabled: widget.isTagDisabled,
-                  ),
-                ),
-              );
-            },
-          ), 
-            const SizedBox(width: 8), // 우측 살짝 여백
-          ],
-          // -------------------------------------------------------
         ),
-        body: _isLoading
-            ? const Center(
-              child: CircularProgressIndicator(
-                color: Color.fromARGB(207, 255, 136, 62),
-              )
-            )
-            : _buildRecipeList(),
+        body: Column(
+          children: [
+            // -------------------------------------------------------
+            // 📌 [신규] 선택된 태그 목록 표시 영역
+            // -------------------------------------------------------
+            if (widget.isTagDisabled != true && widget.tagNames != null && widget.tagNames!.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 16),
+                decoration: BoxDecoration(
+                  color: Colors.grey[100], // 연한 회색 배경
+                  border: Border(bottom: BorderSide(color: Colors.grey.shade300)),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Text(
+                      "적용된 태그",
+                      style: TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.bold),
+                    ),
+                    const SizedBox(height: 8),
+                    SingleChildScrollView(
+                      scrollDirection: Axis.horizontal, // 가로 스크롤
+                      child: Row(
+                        children: widget.tagNames!.map((name) {
+                          return Padding(
+                            padding: const EdgeInsets.only(right: 8.0),
+                            child: Chip(
+                              label: Text(
+                                name,
+                                style: const TextStyle(fontSize: 12, color: Colors.white),
+                              ),
+                              backgroundColor: const Color.fromARGB(255, 129, 128, 128), // 칩 색상
+                              visualDensity: VisualDensity.compact,
+                              padding: EdgeInsets.zero,
+                              labelPadding: const EdgeInsets.symmetric(horizontal: 8),
+                              side: BorderSide.none, // 테두리 없음
+                            ),
+                          );
+                        }).toList(),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            
+            // -------------------------------------------------------
+            // 📌 기존 리스트 영역 (Expanded로 감싸야 함)
+            // -------------------------------------------------------
+            Expanded(
+              child: _isLoading
+                  ? const Center(
+                      child: CircularProgressIndicator(
+                        color: Color.fromARGB(207, 255, 136, 62),
+                      ),
+                    )
+                  : _buildUnifiedRecipeList(),
+            ),
+          ],
+        ),
       );
     }
 
   // 레시피 목록 또는 '결과 없음' 메시지를 보여주는 위젯
-  Widget _buildRecipeList() {
+  Widget _buildUnifiedRecipeList() {
     if (_recipes.isEmpty) {
       // 결과가 없을 때
       return Center(
@@ -193,10 +215,77 @@ class _RecipeListPageState extends State<RecipeListPage> {
         itemCount: _recipes.length,
         itemBuilder: (context, index) {
           final recipe = _recipes[index];
+          Color badgeColor;
+          String badgeText;
+
+          if (recipe.missingCount == 0) {
+            badgeColor = Colors.green;
+            badgeText = "조리 가능";
+          } else if (recipe.missingCount <= 2) {
+            badgeColor = Colors.orange;
+            badgeText = "${recipe.missingCount}개 부족";
+          } else {
+            badgeColor = const Color.fromARGB(255, 255, 0, 0);
+            badgeText = "${recipe.missingCount}개 부족";
+          }
+          
           return ListTile(
             title: Text(recipe.name),
+            subtitle: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    // 1. 요리 시간 (데이터가 있을 때만)
+                    if (recipe.cookingTime != null && recipe.cookingTime! > 0) ...[
+                      const Icon(Icons.access_time, size: 14, color: Colors.grey),
+                      const SizedBox(width: 4),
+                      Text(
+                        "${recipe.cookingTime}분",
+                        style: const TextStyle(fontSize: 12, color: Colors.grey),
+                      ),
+                      // 시간과 난이도 사이 구분선 (둘 다 있을 때만 표시)
+                      if (recipe.difficulty != null)
+                        const Padding(
+                          padding: EdgeInsets.symmetric(horizontal: 6),
+                          child: Text("|", style: TextStyle(fontSize: 10, color: Colors.grey)),
+                        ),
+                    ],
+
+                    // 2. 난이도 (데이터가 있을 때만)
+                    if (recipe.difficulty != null) ...[
+                     Row(
+                      children: List.generate(3, (index) {
+                        final starCount = _starCount(recipe.difficulty!);
+                        return Icon(
+                          index < starCount ? Icons.star : Icons.star_border,
+                          size: 14,
+                          color: Colors.grey,
+                        );
+                      }),
+                    ),
+                    const SizedBox(width: 4),
+                    Text(
+                      recipe.difficulty!,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    ],
+                  ],
+                ),
             leading: const Icon(Icons.restaurant_menu), // 레시피 아이콘
-            trailing: const Icon(Icons.chevron_right),
+            trailing: Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: badgeColor,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Text(
+                    badgeText,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.bold,
+                    ),
+                  ),
+            ),
             onTap: () {
               //레시피 상세 페이지로 이동
               print("선택된 레시피 ID: ${recipe.id}");
@@ -204,7 +293,10 @@ class _RecipeListPageState extends State<RecipeListPage> {
                 context,
                 MaterialPageRoute(
                   //RecipeDetailPage로 ID 전달
-                  builder: (context) => RecipeDetailPage(recipeId: recipe.id),
+                  builder: (context) => RecipeDetailPage(
+                    recipeId: recipe.id,
+                    showIngredientCheck: true,
+                  ),
                 ),
               );
             },

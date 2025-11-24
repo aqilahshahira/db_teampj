@@ -73,8 +73,8 @@ class _HomeScreenState extends State<HomeScreen> {
       const Tag(id: 5, name: "디저트"),
     ],
     "난이도": [
-      const Tag(id: 10, name: "초간단"), const Tag(id: 11, name: "쉬움"),
-      const Tag(id: 12, name: "보통"), const Tag(id: 13, name: "어려움"),
+      const Tag(id: 10, name: "쉬움"),
+      const Tag(id: 11, name: "보통"), const Tag(id: 12, name: "어려움"),
     ],
     "조리기구": [
       const Tag(id: 20, name: "프라이팬"), const Tag(id: 21, name: "전자레인지"),
@@ -86,6 +86,21 @@ class _HomeScreenState extends State<HomeScreen> {
   void initState() {
     super.initState();
     _initPage();
+  }
+
+  List<String> _getSelectedTagNames() {
+    List<String> names = [];
+    
+    // 모든 카테고리를 순회하며 선택된 태그를 찾음
+    _tagCategories.forEach((category, tags) {
+      for (var tag in tags) {
+        if (_selectedTagIds.contains(tag.id)) {
+          names.add(tag.name);
+        }
+      }
+    });
+    
+    return names;
   }
 
   Future<void> _initPage() async {
@@ -132,9 +147,10 @@ class _HomeScreenState extends State<HomeScreen> {
       //await _dbHelper.updateOwnedStatus(_checkedStatus);
 
       if (!mounted) return;
+      List<String> selectedNames = _getSelectedTagNames();
 
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('설정이 저장되었습니다.'), duration: Duration(seconds: 1)),
+        const SnackBar(content: Text('설정이 적용되었습니다.'), duration: Duration(seconds: 1)),
       );
 
       // recipelistpage로 이동하면서 "태그 필터 정보" 전달
@@ -146,6 +162,7 @@ class _HomeScreenState extends State<HomeScreen> {
             // 태그 사용 안함이면 null을 보내고, 아니면 리스트를 보냅니다.
             tagIds: _tagFilteringDisabled ? null : _selectedTagIds.toList(),
             isTagDisabled: _tagFilteringDisabled,
+            tagNames: _tagFilteringDisabled ? null : selectedNames,
           ),
         ),
       );
@@ -184,7 +201,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   color: Colors.white,
                   child: SwitchListTile(
                     title: const Text(
-                      "태그 사용 안함",
+                      "태그 필터 사용 안함",
                       style: TextStyle(fontWeight: FontWeight.bold),
                     ),
                     subtitle: Text(
@@ -219,7 +236,7 @@ class _HomeScreenState extends State<HomeScreen> {
                     // 간단하게 조건부 렌더링(if)으로 처리했습니다.
                     child: ExpansionTile(
                       title: Text(
-                        "태그 상세 설정", 
+                        "태그 상세 선택", 
                         style: TextStyle(fontSize: 15, color: Colors.grey[800]),
                       ),
                       subtitle: Text(
@@ -310,6 +327,10 @@ class _HomeScreenState extends State<HomeScreen> {
                     child: FilterChip(
                       label: Text(tag.name),
                       selected: isSelected,
+                      // 1️⃣ 선택되었을 때 배경색
+                      selectedColor: Colors.orange.shade100, 
+                      // 2️⃣ 선택 안 되었을 때 배경색 (기본값은 회색)
+                      backgroundColor: Colors.grey[200],
                       onSelected: (bool selected) {
                         setState(() {
                           if (selected) {

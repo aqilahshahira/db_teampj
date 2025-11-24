@@ -10,6 +10,7 @@ class RecipeDetail {
   final String? description;
   final String? imagePath;
   final int? cookingTime;
+  final String? difficulty;
 
   RecipeDetail({
     required this.id,
@@ -17,6 +18,7 @@ class RecipeDetail {
     this.description,
     this.imagePath,
     this.cookingTime,
+    this.difficulty,
   });
 
   factory RecipeDetail.fromMap(Map<String, dynamic> map) {
@@ -26,6 +28,7 @@ class RecipeDetail {
       description: map['description'],
       imagePath: map['image_path'],
       cookingTime: map['cooking_time_minutes'],
+      difficulty: map['difficulty'],
     );
   }
 }
@@ -56,13 +59,15 @@ class RequiredIngredient {
 class RecipeStep {
   final int stepNumber;
   final String description;
+  final String? imagePath;
 
-  RecipeStep({required this.stepNumber, required this.description});
+  RecipeStep({required this.stepNumber, required this.description, this.imagePath,});
 
   factory RecipeStep.fromMap(Map<String, dynamic> map) {
     return RecipeStep(
       stepNumber: map['step_number'],
       description: map['step_description'],
+      imagePath: map['image_path'],
     );
   }
 }
@@ -70,8 +75,13 @@ class RecipeStep {
 
 class RecipeDetailPage extends StatefulWidget {
   final int recipeId; // 목록 페이지에서 전달받은 ID
+  final bool showIngredientCheck;
 
-  const RecipeDetailPage({super.key, required this.recipeId});
+  const RecipeDetailPage({
+    super.key, 
+    required this.recipeId,
+    this.showIngredientCheck = true,
+  });
 
   @override
   State<RecipeDetailPage> createState() => _RecipeDetailPageState();
@@ -91,6 +101,19 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     super.initState();
     _loadRecipeData();
   }
+
+  int _starCount(String difficulty) {
+  switch (difficulty) {
+    case "쉬움":
+      return 1;
+    case "보통":
+      return 2;
+    case "어려움":
+      return 3;
+    default:
+      return 0;
+  }
+}
 
   // 함수를 호출하여 3종류의 데이터를 모두 로드
   Future<void> _loadRecipeData() async {
@@ -128,7 +151,12 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
     return Scaffold(
       appBar: AppBar(
         // 로딩이 끝나면 레시피 이름을 제목으로
-        title: Text(_recipeDetail?.name ?? '로딩 중...'),
+        title: Text(
+          _recipeDetail?.name ?? '로딩 중...',
+          style: TextStyle(
+              fontWeight: FontWeight.bold,
+          )
+        ),
       ),
       body: _isLoading
           ? const Center(
@@ -151,14 +179,14 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          // 1. (선택) 이미지 섹션
-          // if (_recipeDetail!.imagePath != null)
-          //   Image.network(
-          //     _recipeDetail!.imagePath!,
-          //     height: 250,
-          //     width: double.infinity,
-          //     fit: BoxFit.cover,
-          //   ),
+         // 1. (선택) 이미지 섹션
+          if (_recipeDetail!.imagePath != null)
+            Image.network(
+              _recipeDetail!.imagePath!,
+              height: 250,
+              width: double.infinity,
+              fit: BoxFit.cover,
+            ),
           
           // 2. 기본 정보 섹션
           _buildInfoSection(),
@@ -201,6 +229,25 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
                     '${_recipeDetail!.cookingTime}분',
                     style: const TextStyle(fontSize: 16, color: Colors.grey),
                   ),
+
+                  const SizedBox(width: 12),
+                  Row(
+                    children: List.generate(3, (index) {
+                      final starCount = _starCount(_recipeDetail!.difficulty ?? "");
+                      return Icon(
+                        index < starCount ? Icons.star : Icons.star_border,
+                        size: 16,
+                        color: Colors.grey,
+                      );
+                    }),
+                  ),
+
+                  const SizedBox(width: 4),
+                  // 난이도 텍스트
+                  Text(
+                    _recipeDetail!.difficulty ?? "",
+                    style: const TextStyle(fontSize: 14, color: Colors.grey),
+                  ),
                 ],
               ),
             ),
@@ -235,6 +282,16 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
           // ListView.builder 대신 Column 사용 (스크롤 중첩 방지)
           Column(
             children: _ingredients.map((ing) {
+
+              if (!widget.showIngredientCheck) {
+                return ListTile(
+                  leading: const Icon(Icons.fiber_manual_record, size: 10, color: Colors.grey),
+                  title: Text(ing.name),
+                  trailing: Text(ing.quantity ?? ''),
+                  visualDensity: VisualDensity.compact, // 간격 좁게
+                );
+              }
+
               return ListTile(
                 // 보유 여부에 따라 아이콘 변경
                 leading: Icon(
@@ -256,7 +313,7 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
           ),
           
           // 📌 (핵심 기능) 부족한 재료가 있을 경우, 장바구니 버튼 표시
-          if (missingIngredients.isNotEmpty)
+          if (widget.showIngredientCheck && missingIngredients.isNotEmpty)
             Padding(
               padding: const EdgeInsets.only(top: 16.0),
               child: Center(
@@ -309,16 +366,93 @@ class _RecipeDetailPageState extends State<RecipeDetailPage> {
             style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
           ),
           const SizedBox(height: 16),
-          // 스크롤 중첩 방지
+          
           Column(
             children: _steps.map((step) {
-              return ListTile(
-                leading: CircleAvatar(
-                  backgroundColor: Colors.blue.shade100,
-                  foregroundColor: Colors.black,
-                  child: Text('${step.stepNumber}'),
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 24.0),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    // 1. 스텝 번호
+                    CircleAvatar(
+                      backgroundColor: Colors.blue.shade50,
+                      foregroundColor: Colors.blue,
+                      radius: 16,
+                      child: Text('${step.stepNumber}', style: const TextStyle(fontWeight: FontWeight.bold)),
+                    ),
+                    const SizedBox(width: 16),
+
+                    // 2. 이미지 + 설명
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          // ------------------------------------------------
+                          // 📌 [수정] URL 이미지가 있을 때만 Image.network 표시
+                          // ------------------------------------------------
+                          if (step.imagePath != null && step.imagePath!.isNotEmpty) ...[
+                            ClipRRect(
+                              borderRadius: BorderRadius.circular(12),
+                              child: Image.network(
+                                step.imagePath!, // DB에 저장된 URL (예: https://site.com/img.jpg)
+                                width: double.infinity,
+                                height: 200,
+                                fit: BoxFit.cover,
+                                
+                                // (1) 로딩 중에 보여줄 위젯 (선택 사항)
+                                loadingBuilder: (context, child, loadingProgress) {
+                                  if (loadingProgress == null) return child;
+                                  return Container(
+                                    height: 200,
+                                    width: double.infinity,
+                                    color: Colors.grey[100],
+                                    child: Center(
+                                      child: CircularProgressIndicator(
+                                        value: loadingProgress.expectedTotalBytes != null
+                                            ? loadingProgress.cumulativeBytesLoaded /
+                                                loadingProgress.expectedTotalBytes!
+                                            : null,
+                                      ),
+                                    ),
+                                  );
+                                },
+
+                                // (2) URL이 잘못되었거나 로드 실패 시 보여줄 위젯
+                                errorBuilder: (context, error, stackTrace) {
+                                  return Container(
+                                    height: 200,
+                                    width: double.infinity,
+                                    decoration: BoxDecoration(
+                                      color: Colors.grey[200],
+                                      borderRadius: BorderRadius.circular(12),
+                                    ),
+                                    child: Column(
+                                      mainAxisAlignment: MainAxisAlignment.center,
+                                      children: const [
+                                        Icon(Icons.broken_image_outlined, size: 40, color: Colors.grey),
+                                        SizedBox(height: 8),
+                                        Text("이미지를 불러올 수 없음", style: TextStyle(color: Colors.grey, fontSize: 12)),
+                                      ],
+                                    ),
+                                  );
+                                },
+                              ),
+                            ),
+                            const SizedBox(height: 12), // 이미지와 텍스트 사이 간격
+                          ],
+                          // ------------------------------------------------
+
+                          // 3. 설명 텍스트
+                          Text(
+                            step.description,
+                            style: const TextStyle(fontSize: 16, height: 1.5),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ],
                 ),
-                title: Text(step.description),
               );
             }).toList(),
           ),

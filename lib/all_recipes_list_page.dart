@@ -17,6 +17,12 @@ class Recipe {
   }
 }
 
+class Tag {
+  final int id;
+  final String name;
+  const Tag({required this.id, required this.name});
+}
+
 class AllRecipesListPage extends StatefulWidget {
   const AllRecipesListPage({super.key});
 
@@ -29,6 +35,35 @@ class _AllRecipesListPageState extends State<AllRecipesListPage> {
   List<Recipe> _recipes = [];
   bool _isLoading = true;
 
+  // ------------------------------------------------------
+  // 📌 태그 필터 관련 변수들
+  // ------------------------------------------------------
+  bool _tagFilteringDisabled = false; // 기본값: 필터 적용 (필요하면 true로 시작)
+  
+  Map<String, bool> _categoryExpanded = {
+    "요리 종류": false,
+    "난이도": false,
+    "조리기구": false,
+  };
+
+  Set<int> _selectedTagIds = {};
+
+  final Map<String, List<Tag>> _tagCategories = {
+    "요리 종류": [
+      const Tag(id: 1, name: "한식"), const Tag(id: 2, name: "양식"),
+      const Tag(id: 3, name: "중식"), const Tag(id: 4, name: "일식"),
+      const Tag(id: 5, name: "디저트"),
+    ],
+    "난이도": [
+      const Tag(id: 10, name: "쉬움"),
+      const Tag(id: 11, name: "보통"), const Tag(id: 12, name: "어려움"),
+    ],
+    "조리기구": [
+      const Tag(id: 20, name: "프라이팬"), const Tag(id: 21, name: "전자레인지"),
+      const Tag(id: 22, name: "에어프라이어"), const Tag(id: 23, name: "오븐"),
+    ],
+  };
+
   @override
   void initState() {
     super.initState();
@@ -39,7 +74,10 @@ class _AllRecipesListPageState extends State<AllRecipesListPage> {
   Future<void> _loadData() async {
     setState(() { _isLoading = true; });
     try {
-      final data = await _dbHelper.getFullRecipeList();
+      final data = await _dbHelper.getFullRecipeList(
+        tagIds: _tagFilteringDisabled ? null : _selectedTagIds.toList(),
+        isTagDisabled: _tagFilteringDisabled,
+      );
       if (mounted) {
         setState(() {
           _recipes = data.map((map) => Recipe.fromMap(map)).toList();
@@ -66,18 +104,67 @@ class _AllRecipesListPageState extends State<AllRecipesListPage> {
           ),
         ),
       ),
-      body: _isLoading
-          ? const Center(
-            child: CircularProgressIndicator(
-              color: Color.fromARGB(207, 255, 136, 62),
-            )
-          )
-          : _buildListView(),
-      floatingActionButton: FloatingActionButton(
-        onPressed: _loadData,
-        tooltip: '새로고침',
-        backgroundColor: Color.fromARGB(207, 255, 136, 62),
-        child: const Icon(Icons.refresh),
+      body: Column(
+        children: [
+          // -----------------------------------------------
+          // 📌 [필터 영역] 태그 스위치 및 상세 설정
+          // -----------------------------------------------
+          Container(
+            color: Colors.white,
+            child: Column(
+              children: [
+                // 1. 태그 사용 안함 스위치
+                SwitchListTile(
+                  title: const Text(
+                    "태그 필터 사용 안함 (전체 보기)",
+                    style: TextStyle(fontWeight: FontWeight.bold,),
+                  ),
+                  subtitle: Text(
+                      _tagFilteringDisabled
+                          ? "태그를 사용하지 않고 레시피를 검색합니다."
+                          : "활성화시 태그없이 레시피를 검색합니다.",
+                      style: _tagFilteringDisabled
+                          ?  TextStyle(fontSize: 12, color: const Color.fromARGB(255, 250, 126, 2))
+                          :  TextStyle(fontSize: 12, color: Colors.grey[600]),
+                    ),
+                  value: _tagFilteringDisabled,
+                  onChanged: (value) {
+                    setState(() {
+                      _tagFilteringDisabled = value;
+                    });
+                    // 📌 스위치를 끄고 켤 때마다 즉시 리스트 새로고침
+                    _loadData();
+                  },
+                ),
+                
+                // 2. 태그 상세 설정 (활성화 시에만 보임)
+                if (!_tagFilteringDisabled)
+                  ExpansionTile(
+                    title: const Text("태그 상세 선택"),
+                    subtitle: Text(
+                      "선택된 태그: ${_selectedTagIds.length}개",
+                      style: TextStyle(color: Colors.blue[700], fontSize: 12, fontWeight: FontWeight.bold),
+                    ),
+                    children: [
+                      ..._buildTagCategories(),
+                      const SizedBox(height: 10),
+                    ],
+                  ),
+              ],
+            ),
+          ),
+          
+          const Divider(height: 1),
+
+          // -----------------------------------------------
+          // 📌 [리스트 영역]
+          // -----------------------------------------------
+          Expanded(
+            child: _isLoading
+                ? const Center(child: CircularProgressIndicator())
+                : _buildListView(),
+          ),
+        ],
       ),
     );
   }
@@ -110,7 +197,10 @@ class _AllRecipesListPageState extends State<AllRecipesListPage> {
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (context) => RecipeDetailPage(recipeId: recipe.id),
+                  builder: (context) => RecipeDetailPage(
+                    recipeId: recipe.id,
+                    showIngredientCheck: false,
+                  ),
                 ),
               );
             },
@@ -119,4 +209,68 @@ class _AllRecipesListPageState extends State<AllRecipesListPage> {
       ),
     );
   }
+  // ------------------------------------------------------
+  // 📌 태그 카테고리 빌더 (실시간 갱신 적용)
+  // ------------------------------------------------------
+  List<Widget> _buildTagCategories() {
+    return _tagCategories.keys.map((category) {
+      final tags = _tagCategories[category]!;
+
+      return Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          ListTile(
+            visualDensity: VisualDensity.compact,
+            title: Text(category, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+            trailing: Icon(
+              _categoryExpanded[category] == true ? Icons.expand_less : Icons.expand_more,
+              size: 20,
+            ),
+            onTap: () {
+              setState(() {
+                _categoryExpanded[category] = !(_categoryExpanded[category] ?? false);
+              });
+            },
+          ),
+          
+          if (_categoryExpanded[category] == true)
+            SizedBox(
+              height: 50,
+              child: ListView(
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                children: tags.map((tag) {
+                  final isSelected = _selectedTagIds.contains(tag.id);
+                  return Padding(
+                    padding: const EdgeInsets.only(right: 8),
+                    child: FilterChip(
+                      label: Text(tag.name),
+                      selected: isSelected,
+                      // 1️⃣ 선택되었을 때 배경색
+                      selectedColor: Colors.orange.shade100, 
+                      
+                      // 2️⃣ 선택 안 되었을 때 배경색 (기본값은 회색)
+                      backgroundColor: Colors.grey[200],
+                      // 📌 [핵심] 칩을 선택/해제 할 때마다 _loadData() 호출
+                      onSelected: (bool selected) {
+                        setState(() {
+                          if (selected) {
+                            _selectedTagIds.add(tag.id);
+                          } else {
+                            _selectedTagIds.remove(tag.id);
+                          }
+                        });
+                        // 즉시 새로고침
+                        _loadData();
+                      },
+                    ),
+                  );
+                }).toList(),
+              ),
+            ),
+        ],
+      );
+    }).toList();
+  }
 }
+
